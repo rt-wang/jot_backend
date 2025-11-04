@@ -1,4 +1,4 @@
-# Memory Lens Backend - Project Summary
+# jot Backend - Project Summary
 
 ## ✅ Project Complete
 

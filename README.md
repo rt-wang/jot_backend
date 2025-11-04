@@ -1,4 +1,4 @@
-# Memory Lens - Backend
+# jot - Backend
 
 Audio → Transcript → Organized Editable Note App
 

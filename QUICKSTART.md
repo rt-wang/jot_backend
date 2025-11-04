@@ -1,4 +1,4 @@
-# Memory Lens Backend - Quick Start Guide
+# jot Backend - Quick Start Guide
 
 ## 🚀 Quick Setup (5 minutes)
 
