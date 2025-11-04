@@ -4,7 +4,7 @@
 
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 
 export type Database = {
   public: {
@@ -93,9 +93,33 @@ export type Database = {
 
 /**
  * Create a Supabase server client for authenticated API routes
- * Uses cookies for auth state
+ * Supports both cookies (for browser) and Authorization header (for API testing)
  */
 export async function createSupabaseServerClient() {
+  const headersList = await headers();
+  const authHeader = headersList.get('authorization');
+  
+  // If Authorization header is present (e.g., from Postman), use it
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.substring(7);
+    return createClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      }
+    );
+  }
+
+  // Otherwise, use cookies (for browser-based auth)
   const cookieStore = await cookies();
 
   return createServerClient<Database>(

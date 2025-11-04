@@ -94,17 +94,35 @@ CREATE TRIGGER notes_touch
   EXECUTE FUNCTION touch_updated_at();
 
 -- Create storage bucket for audio files (run this if not exists)
--- INSERT INTO storage.buckets (id, name, public) 
--- VALUES ('audio', 'audio', false);
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) 
+VALUES (
+  'audio', 
+  'audio', 
+  false, 
+  52428800,  -- 50MB limit
+  ARRAY['audio/webm', 'audio/m4a', 'audio/mp4', 'audio/mpeg', 'audio/wav']
+)
+ON CONFLICT (id) DO NOTHING;
 
 -- Storage bucket policies
--- CREATE POLICY "Authenticated users can upload audio" 
---   ON storage.objects FOR INSERT 
---   TO authenticated 
---   WITH CHECK (bucket_id = 'audio');
+CREATE POLICY "Authenticated users can upload audio" 
+  ON storage.objects FOR INSERT 
+  TO authenticated 
+  WITH CHECK (bucket_id = 'audio');
 
--- CREATE POLICY "Users can read their own audio" 
---   ON storage.objects FOR SELECT 
---   TO authenticated 
---   USING (bucket_id = 'audio');
+CREATE POLICY "Authenticated users can read audio" 
+  ON storage.objects FOR SELECT 
+  TO authenticated 
+  USING (bucket_id = 'audio');
+
+CREATE POLICY "Authenticated users can update audio" 
+  ON storage.objects FOR UPDATE 
+  TO authenticated 
+  USING (bucket_id = 'audio')
+  WITH CHECK (bucket_id = 'audio');
+
+CREATE POLICY "Authenticated users can delete audio" 
+  ON storage.objects FOR DELETE 
+  TO authenticated 
+  USING (bucket_id = 'audio');
 
