@@ -5,6 +5,10 @@
 import OpenAI from 'openai';
 import { OutlineJson, outlineJsonSchema, EditorJson } from './validation';
 import { InternalServerError } from './errors';
+import { writeFile, unlink } from 'fs/promises';
+import { createReadStream } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -33,40 +37,149 @@ export async function transcribeAudio({
   mime: string;
 }): Promise<TranscriptionResult> {
   try {
-    // Determine file extension from mime type
-    const extension = mime.split('/')[1] || 'webm';
-    
-    // Create a File-like object from buffer
-    const file = new File([audioBuffer], `audio.${extension}`, { type: mime });
+    // Map MIME types to OpenAI-supported extensions
+    const mimeToExtension: Record<string, string> = {
+      'audio/webm': 'webm',
+      'audio/m4a': 'm4a',
+      'audio/mp4': 'mp4',
+      'audio/mpeg': 'mp3',
+      'audio/mp3': 'mp3',
+      'audio/wav': 'wav',
+      'audio/x-wav': 'wav',
+      'audio/flac': 'flac',
+      'audio/ogg': 'ogg',
+      'audio/oga': 'oga',
+    };
 
-    const response = await openai.audio.transcriptions.create({
-      file,
-      model: 'whisper-1',
-      response_format: 'verbose_json',
-      timestamp_granularities: ['segment'],
-    });
-
-    // Extract segments
-    const segments: TranscriptionSegment[] = [];
-    if ('segments' in response && Array.isArray(response.segments)) {
-      for (const seg of response.segments) {
-        if (seg.start !== undefined && seg.end !== undefined && seg.text) {
-          segments.push({
-            start: seg.start,
-            end: seg.end,
-            text: seg.text,
-          });
-        }
+    // Detect actual file format from magic bytes (more reliable than extension)
+    const detectFormatFromMagicBytes = (buffer: Buffer): { mime: string; extension: string } => {
+      if (buffer.length < 12) {
+        return { mime: 'audio/webm', extension: 'webm' }; // Default
       }
+      
+      const hex = buffer.slice(0, 12).toString('hex');
+      const ascii = buffer.slice(4, 12).toString('ascii').toLowerCase();
+      
+      // M4A files: start with "ftyp" and contain "M4A"
+      if (hex.startsWith('000000') && hex.includes('66747970') && (hex.includes('4d343420') || ascii.includes('m4a'))) {
+        return { mime: 'audio/m4a', extension: 'm4a' };
+      }
+      // MP4 files: start with "ftyp"
+      if (hex.startsWith('000000') && hex.includes('66747970')) {
+        return { mime: 'audio/mp4', extension: 'mp4' };
+      }
+      // WebM files: start with 1A 45 DF A3 (EBML header)
+      if (hex.startsWith('1a45dfa3')) {
+        return { mime: 'audio/webm', extension: 'webm' };
+      }
+      // WAV files: start with "RIFF"
+      if (hex.startsWith('52494646')) {
+        return { mime: 'audio/wav', extension: 'wav' };
+      }
+      // MP3 files: start with FF FB or "ID3"
+      if (hex.startsWith('fffb') || hex.startsWith('494433')) {
+        return { mime: 'audio/mpeg', extension: 'mp3' };
+      }
+      
+      // Default: use provided MIME type
+      return { mime, extension: mimeToExtension[mime.toLowerCase()] || mime.split('/')[1] || 'webm' };
+    };
+
+    // Detect actual format from file content (more reliable than filename/extension)
+    const detected = detectFormatFromMagicBytes(audioBuffer);
+    const actualMime = detected.mime;
+    const actualExtension = detected.extension;
+    
+    // Use detected format (ignore provided MIME if it doesn't match actual file)
+    const extension = actualExtension;
+    
+    // Validate file size (OpenAI has a 25MB limit)
+    const maxSize = 25 * 1024 * 1024; // 25MB
+    if (audioBuffer.length > maxSize) {
+      throw new Error(`Audio file too large: ${audioBuffer.length} bytes (max: ${maxSize} bytes)`);
     }
 
-    return {
-      text: response.text,
-      segments,
-    };
-  } catch (error) {
-    console.error('[openai] Transcription failed:', error);
-    throw new InternalServerError('Failed to transcribe audio');
+    // Write to temporary file (OpenAI SDK works better with file paths)
+    const tempFilePath = join(tmpdir(), `audio-${Date.now()}-${Math.random().toString(36)}.${extension}`);
+    
+    try {
+      await writeFile(tempFilePath, audioBuffer);
+      
+      console.log('[openai] File info before transcription:', {
+        size: audioBuffer.length,
+        providedMime: mime,
+        detectedMime: actualMime,
+        providedExtension: mime.split('/')[1],
+        detectedExtension: actualExtension,
+        usingExtension: extension,
+        tempFile: tempFilePath,
+        filename: `audio.${extension}`,
+        magicBytes: audioBuffer.slice(0, 12).toString('hex'),
+      });
+
+      // OpenAI SDK accepts ReadStream or File objects
+      // Use ReadStream from the temp file (more reliable than File objects from Buffer)
+      // File is written with the correct extension based on actual file format
+      const fileStream = createReadStream(tempFilePath);
+      
+      const response = await openai.audio.transcriptions.create({
+        file: fileStream as any, // ReadStream is compatible
+        model: 'whisper-1',
+        response_format: 'verbose_json',
+        timestamp_granularities: ['segment'],
+      });
+
+      // Extract segments
+      const segments: TranscriptionSegment[] = [];
+      if ('segments' in response && Array.isArray(response.segments)) {
+        for (const seg of response.segments) {
+          if (seg.start !== undefined && seg.end !== undefined && seg.text) {
+            segments.push({
+              start: seg.start,
+              end: seg.end,
+              text: seg.text,
+            });
+          }
+        }
+      }
+
+      return {
+        text: response.text,
+        segments,
+      };
+    } finally {
+      // Clean up temp file
+      try {
+        await unlink(tempFilePath);
+      } catch (cleanupError) {
+        console.warn('[openai] Failed to cleanup temp file:', cleanupError);
+      }
+    }
+  } catch (error: any) {
+    console.error('[openai] Transcription failed:', {
+      message: error.message,
+      status: error.status,
+      code: error.code,
+      type: error.type,
+    });
+
+    // Provide more specific error messages
+    if (error.message?.includes('Invalid file format')) {
+      throw new InternalServerError(
+        `Invalid audio format. Received: ${mime}, Extension: ${mime.split('/')[1] || 'unknown'}. Supported: webm, m4a, mp3, mp4, wav, flac, ogg`
+      );
+    }
+    if (error.status === 401) {
+      throw new InternalServerError('Invalid OpenAI API key');
+    }
+    if (error.status === 429) {
+      throw new InternalServerError('OpenAI API rate limit exceeded');
+    }
+    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT') {
+      throw new InternalServerError('OpenAI API connection failed. Please try again.');
+    }
+    
+    throw new InternalServerError(`Failed to transcribe audio: ${error.message || 'Unknown error'}`);
   }
 }
 

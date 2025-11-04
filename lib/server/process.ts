@@ -60,10 +60,42 @@ export async function processCapture({
       size: audioBuffer.length,
     });
 
-    // 3. Transcribe with Whisper
+    // 3. Detect MIME type from file extension or stored value
+    const getMimeType = (path: string): string => {
+      const ext = path.split('.').pop()?.toLowerCase();
+      const mimeMap: Record<string, string> = {
+        'webm': 'audio/webm',
+        'm4a': 'audio/m4a',
+        'mp4': 'audio/mp4',
+        'mp3': 'audio/mpeg',
+        'wav': 'audio/wav',
+        'flac': 'audio/flac',
+        'ogg': 'audio/ogg',
+        'oga': 'audio/oga',
+      };
+      return mimeMap[ext || ''] || 'audio/webm'; // Default to webm
+    };
+
+    // Use stored mime type if available (temporarily stored in language field)
+    // Otherwise detect from file extension
+    const mimeType = capture.language && capture.language.startsWith('audio/')
+      ? capture.language
+      : getMimeType(capture.audio_path);
+    
+    console.log('[process] File info before transcription:', {
+      requestId,
+      path: capture.audio_path,
+      detectedMime: getMimeType(capture.audio_path),
+      storedMime: capture.language,
+      usedMime: mimeType,
+      fileSize: audioBuffer.length,
+      extension: capture.audio_path.split('.').pop(),
+    });
+
+    // 4. Transcribe with Whisper
     const { text, segments } = await transcribeAudio({
       audioBuffer,
-      mime: 'audio/webm', // Default, adjust if needed
+      mime: mimeType,
     });
 
     console.log('[process] Transcription complete:', {
@@ -72,7 +104,7 @@ export async function processCapture({
       segmentCount: segments.length,
     });
 
-    // 4. Persist transcript
+    // 5. Persist transcript
     const { error: transcriptError } = await supabase.from('transcripts').insert({
       capture_id: captureId,
       text,
@@ -84,7 +116,7 @@ export async function processCapture({
       throw new InternalServerError('Failed to save transcript');
     }
 
-    // 5. Structure outline with GPT
+    // 6. Structure outline with GPT
     const outline = await structureOutline({ transcriptText: text });
 
     console.log('[process] Outline structured:', {
@@ -93,12 +125,12 @@ export async function processCapture({
       tags: outline.tags,
     });
 
-    // 6. Generate editor JSON
+    // 7. Generate editor JSON
     const editorJson = await outlineToEditorJson({ outline });
 
     console.log('[process] Editor JSON generated:', { requestId });
 
-    // 7. Create note
+    // 8. Create note
     const { data: note, error: noteError } = await supabase
       .from('notes')
       .insert({

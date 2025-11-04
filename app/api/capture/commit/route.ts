@@ -22,15 +22,28 @@ export async function POST(request: Request) {
     // Parse and validate body
     const body = await parseBody(request, commitBodySchema);
 
+    // Normalize storage key (remove 'audio/' prefix if present)
+    const storageKey = body.storageKey.startsWith('audio/')
+      ? body.storageKey.substring(6)
+      : body.storageKey;
+
     // Create capture record
+    // Store mime type in language field temporarily
+    const captureData: any = {
+      user_id: userId,
+      audio_path: storageKey,
+      duration_s: body.duration_s,
+    };
+    
+    // Store mime type if provided (temporarily in language field)
+    if (body.mime) {
+      captureData.language = body.mime;
+    }
+
     const supabase = await createSupabaseServerClient();
     const { data: capture, error } = await supabase
       .from('captures')
-      .insert({
-        user_id: userId,
-        audio_path: body.storageKey,
-        duration_s: body.duration_s,
-      })
+      .insert(captureData)
       .select('id')
       .single();
 

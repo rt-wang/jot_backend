@@ -21,6 +21,7 @@ export type PresignBody = z.infer<typeof presignBodySchema>;
 export const commitBodySchema = z.object({
   storageKey: z.string().min(1),
   duration_s: z.number().int().min(0).optional(),
+  mime: audioMimeSchema.optional(), // MIME type from presign request
 });
 
 export type CommitBody = z.infer<typeof commitBodySchema>;
