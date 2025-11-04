@@ -9,18 +9,6 @@ vi.mock('@/lib/auth', () => ({
   requireUser: vi.fn().mockResolvedValue({ userId: 'test-user-id' }),
 }));
 
-const mockNote = {
-  id: 'test-note-id',
-  user_id: 'test-user-id',
-  capture_id: 'test-capture-id',
-  title: 'Test Note',
-  editor_json: { type: 'doc', content: [] },
-  outline_json: { title: 'Test Note', highlights: [], insights: [], open_questions: [], next_steps: [], tags: [], lang: 'en' },
-  tags: ['work'],
-  created_at: '2023-01-01T00:00:00Z',
-  updated_at: '2023-01-01T00:00:00Z',
-};
-
 vi.mock('@/lib/supabase', () => ({
   createSupabaseServerClient: vi.fn().mockResolvedValue({
     from: vi.fn().mockReturnValue({
@@ -28,7 +16,17 @@ vi.mock('@/lib/supabase', () => ({
         eq: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
             single: vi.fn().mockResolvedValue({
-              data: mockNote,
+              data: {
+                id: 'test-note-id',
+                user_id: 'test-user-id',
+                capture_id: 'test-capture-id',
+                title: 'Test Note',
+                editor_json: { type: 'doc', content: [] },
+                outline_json: { title: 'Test Note', highlights: [], insights: [], open_questions: [], next_steps: [], tags: [], lang: 'en' },
+                tags: ['work'],
+                created_at: '2023-01-01T00:00:00Z',
+                updated_at: '2023-01-01T00:00:00Z',
+              },
               error: null,
             }),
           }),

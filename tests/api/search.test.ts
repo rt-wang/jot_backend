@@ -16,43 +16,50 @@ vi.mock('@/lib/ratelimit', () => ({
   },
 }));
 
-const mockNotes = [
-  {
-    id: 'note-1',
-    title: 'Audio Recording Notes',
-    tags: ['work'],
-    created_at: '2023-01-01T00:00:00Z',
-    capture_id: 'capture-1',
-  },
-  {
-    id: 'note-2',
-    title: 'Creative Ideas',
-    tags: ['creative'],
-    created_at: '2023-01-02T00:00:00Z',
-    capture_id: 'capture-2',
-  },
-];
+vi.mock('@/lib/supabase', () => {
+  const mockData = [
+    {
+      id: 'note-1',
+      title: 'Audio Recording Notes',
+      tags: ['work'],
+      created_at: '2023-01-01T00:00:00Z',
+      capture_id: 'capture-1',
+    },
+    {
+      id: 'note-2',
+      title: 'Creative Ideas',
+      tags: ['creative'],
+      created_at: '2023-01-02T00:00:00Z',
+      capture_id: 'capture-2',
+    },
+  ];
 
-vi.mock('@/lib/supabase', () => ({
-  createSupabaseServerClient: vi.fn().mockResolvedValue({
-    from: vi.fn().mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({
-          order: vi.fn().mockReturnValue({
-            contains: vi.fn().mockResolvedValue({
-              data: mockNotes,
-              error: null,
-            }),
+  // Create a thenable object that also has .contains() method
+  const createQueryResult = () => {
+    const result = Promise.resolve({
+      data: mockData,
+      error: null,
+    });
+    // Add contains method that also returns a thenable
+    (result as any).contains = vi.fn().mockResolvedValue({
+      data: mockData,
+      error: null,
+    });
+    return result;
+  };
+
+  return {
+    createSupabaseServerClient: vi.fn().mockResolvedValue({
+      from: vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            order: vi.fn().mockReturnValue(createQueryResult()),
           }),
-        }),
-        order: vi.fn().mockResolvedValue({
-          data: mockNotes,
-          error: null,
         }),
       }),
     }),
-  }),
-}));
+  };
+});
 
 import { GET } from '@/app/api/search/route';
 

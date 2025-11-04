@@ -3,6 +3,7 @@
  */
 
 import { z } from 'zod';
+import { ValidationError } from './errors';
 
 // Audio MIME types
 export const audioMimeSchema = z.enum(['audio/webm', 'audio/m4a', 'audio/mp4', 'audio/mpeg', 'audio/wav']);
@@ -79,11 +80,11 @@ export async function parseBody<T>(
     return schema.parse(body);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new Error(
+      throw new ValidationError(
         `Validation failed: ${error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`
       );
     }
-    throw new Error('Invalid request body');
+    throw new ValidationError('Invalid request body');
   }
 }
 
@@ -103,11 +104,11 @@ export function parseSearchParams<T>(
     return schema.parse(params);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new Error(
+      throw new ValidationError(
         `Validation failed: ${error.errors.map((e) => `${e.path.join('.')}: ${e.message}`).join(', ')}`
       );
     }
-    throw new Error('Invalid query parameters');
+    throw new ValidationError('Invalid query parameters');
   }
 }
 
