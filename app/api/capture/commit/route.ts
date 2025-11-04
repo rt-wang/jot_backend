@@ -1,12 +1,12 @@
 /**
- * POST /api/capture/commit - Commit uploaded audio and start processing
+ * POST /api/capture/commit - Commit uploaded audio or text notes and start processing
  */
 
 import { requireUser } from '@/lib/auth';
 import { errorToResponse } from '@/lib/errors';
 import { checkRateLimit, rateLimits } from '@/lib/ratelimit';
 import { createSupabaseServerClient } from '@/lib/supabase';
-import { parseBody, commitBodySchema } from '@/lib/validation';
+import { parseBody, commitBodySchema, audioMimeSchema } from '@/lib/validation';
 import { processCapture } from '@/lib/server/process';
 
 export const dynamic = 'force-dynamic';
@@ -22,18 +22,33 @@ export async function POST(request: Request) {
     // Parse and validate body
     const body = await parseBody(request, commitBodySchema);
 
-    // Normalize storage key (remove 'audio/' prefix if present)
-    const storageKey = body.storageKey.startsWith('audio/')
-      ? body.storageKey.substring(6)
-      : body.storageKey;
+    // Determine if it's audio or text based on MIME type
+    const isAudio = body.mime ? audioMimeSchema.safeParse(body.mime).success : true; // Default to audio if no MIME type
+    const bucket = isAudio ? 'audio' : 'notes';
+
+    // Normalize storage key (remove bucket prefix if present)
+    let storageKey = body.storageKey;
+    if (storageKey.startsWith(`${bucket}/`)) {
+      storageKey = storageKey.substring(bucket.length + 1);
+    } else if (storageKey.startsWith('audio/')) {
+      storageKey = storageKey.substring(6);
+    } else if (storageKey.startsWith('notes/')) {
+      storageKey = storageKey.substring(6);
+    }
 
     // Create capture record
     // Store mime type in language field temporarily
     const captureData: any = {
       user_id: userId,
-      audio_path: storageKey,
       duration_s: body.duration_s,
     };
+    
+    // Set the appropriate path field based on type
+    if (isAudio) {
+      captureData.audio_path = storageKey;
+    } else {
+      captureData.text_path = storageKey;
+    }
     
     // Store mime type if provided (temporarily in language field)
     if (body.mime) {
@@ -54,10 +69,12 @@ export async function POST(request: Request) {
 
     const captureId = capture.id;
 
-    // Process synchronously if duration <= 120s, otherwise return 202
+    // For text notes, always process synchronously (no duration limit)
+    // For audio, process synchronously if duration <= 120s, otherwise return 202
     const duration = body.duration_s || 0;
+    const shouldProcessSync = !isAudio || duration <= 120;
     
-    if (duration <= 120) {
+    if (shouldProcessSync) {
       // Process synchronously
       const { noteId } = await processCapture({ userId, captureId });
       

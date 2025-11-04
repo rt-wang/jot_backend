@@ -8,10 +8,16 @@ import { ValidationError } from './errors';
 // Audio MIME types
 export const audioMimeSchema = z.enum(['audio/webm', 'audio/m4a', 'audio/mp4', 'audio/mpeg', 'audio/wav']);
 
+// Text MIME types
+export const textMimeSchema = z.enum(['text/plain', 'text/markdown']);
+
+// Combined MIME types for presign
+export const presignMimeSchema = z.union([audioMimeSchema, textMimeSchema]);
+
 // POST /api/capture/presign
 export const presignBodySchema = z.object({
   filename: z.string().min(1).max(255),
-  mime: audioMimeSchema,
+  mime: presignMimeSchema,
   duration_s: z.number().int().min(0).optional(),
 });
 
@@ -21,7 +27,7 @@ export type PresignBody = z.infer<typeof presignBodySchema>;
 export const commitBodySchema = z.object({
   storageKey: z.string().min(1),
   duration_s: z.number().int().min(0).optional(),
-  mime: audioMimeSchema.optional(), // MIME type from presign request
+  mime: presignMimeSchema.optional(), // MIME type from presign request
 });
 
 export type CommitBody = z.infer<typeof commitBodySchema>;

@@ -1,14 +1,16 @@
 -- jot Initial Schema
 -- Run this in Supabase SQL Editor
 
--- Captures table: stores audio upload metadata
+-- Captures table: stores audio and text upload metadata
 CREATE TABLE IF NOT EXISTS public.captures (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id      UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  audio_path   TEXT NOT NULL,           -- storage key in bucket "audio"
+  audio_path   TEXT,                    -- storage key in bucket "audio" (nullable for text notes)
+  text_path    TEXT,                    -- storage key in bucket "notes" (nullable for audio)
   duration_s   INT  CHECK (duration_s >= 0),
   language     TEXT,                    -- e.g. 'en','zh','mixed'
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK ((audio_path IS NOT NULL) OR (text_path IS NOT NULL))  -- Must have either audio or text
 );
 
 CREATE INDEX captures_user_id_idx ON public.captures(user_id);
@@ -125,4 +127,37 @@ CREATE POLICY "Authenticated users can delete audio"
   ON storage.objects FOR DELETE 
   TO authenticated 
   USING (bucket_id = 'audio');
+
+-- Create storage bucket for text notes (run this if not exists)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) 
+VALUES (
+  'notes', 
+  'notes', 
+  false, 
+  10485760,  -- 10MB limit
+  ARRAY['text/plain', 'text/markdown']
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage bucket policies for text notes
+CREATE POLICY "Authenticated users can upload notes" 
+  ON storage.objects FOR INSERT 
+  TO authenticated 
+  WITH CHECK (bucket_id = 'notes');
+
+CREATE POLICY "Authenticated users can read notes" 
+  ON storage.objects FOR SELECT 
+  TO authenticated 
+  USING (bucket_id = 'notes');
+
+CREATE POLICY "Authenticated users can update notes" 
+  ON storage.objects FOR UPDATE 
+  TO authenticated 
+  USING (bucket_id = 'notes')
+  WITH CHECK (bucket_id = 'notes');
+
+CREATE POLICY "Authenticated users can delete notes" 
+  ON storage.objects FOR DELETE 
+  TO authenticated 
+  USING (bucket_id = 'notes');
 

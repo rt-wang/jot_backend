@@ -1,6 +1,7 @@
 /**
- * Audio capture processing pipeline
- * Downloads audio → transcribes → structures → creates note
+ * Capture processing pipeline
+ * For audio: Downloads audio → transcribes → structures → creates note
+ * For text: Downloads text → structures → creates note
  */
 
 import { createSupabaseServerClient } from '../supabase';
@@ -12,7 +13,7 @@ export interface ProcessResult {
 }
 
 /**
- * Process a capture: transcribe audio and create structured note
+ * Process a capture: transcribe audio or read text and create structured note
  */
 export async function processCapture({
   userId,
@@ -39,81 +40,118 @@ export async function processCapture({
       throw new InternalServerError('Capture not found');
     }
 
+    const isAudio = !!capture.audio_path;
+    const isText = !!capture.text_path;
+
     console.log('[process] Capture fetched:', {
       requestId,
       audioPath: capture.audio_path,
+      textPath: capture.text_path,
+      isAudio,
+      isText,
     });
 
-    // 2. Download audio from Supabase Storage
-    const { data: audioData, error: downloadError } = await supabase.storage
-      .from('audio')
-      .download(capture.audio_path);
+    let text: string;
+    let segments: Array<{ start: number; end: number; text: string }> = [];
 
-    if (downloadError || !audioData) {
-      console.error('[process] Download failed:', downloadError);
-      throw new InternalServerError('Failed to download audio file');
-    }
+    if (isAudio && capture.audio_path) {
+      // Audio processing path
+      // 2. Download audio from Supabase Storage
+      const { data: audioData, error: downloadError } = await supabase.storage
+        .from('audio')
+        .download(capture.audio_path);
 
-    const audioBuffer = Buffer.from(await audioData.arrayBuffer());
-    console.log('[process] Audio downloaded:', {
-      requestId,
-      size: audioBuffer.length,
-    });
+      if (downloadError || !audioData) {
+        console.error('[process] Download failed:', downloadError);
+        throw new InternalServerError('Failed to download audio file');
+      }
 
-    // 3. Detect MIME type from file extension or stored value
-    const getMimeType = (path: string): string => {
-      const ext = path.split('.').pop()?.toLowerCase();
-      const mimeMap: Record<string, string> = {
-        'webm': 'audio/webm',
-        'm4a': 'audio/m4a',
-        'mp4': 'audio/mp4',
-        'mp3': 'audio/mpeg',
-        'wav': 'audio/wav',
-        'flac': 'audio/flac',
-        'ogg': 'audio/ogg',
-        'oga': 'audio/oga',
+      const audioBuffer = Buffer.from(await audioData.arrayBuffer());
+      console.log('[process] Audio downloaded:', {
+        requestId,
+        size: audioBuffer.length,
+      });
+
+      // 3. Detect MIME type from file extension or stored value
+      const getMimeType = (path: string): string => {
+        const ext = path.split('.').pop()?.toLowerCase();
+        const mimeMap: Record<string, string> = {
+          'webm': 'audio/webm',
+          'm4a': 'audio/m4a',
+          'mp4': 'audio/mp4',
+          'mp3': 'audio/mpeg',
+          'wav': 'audio/wav',
+          'flac': 'audio/flac',
+          'ogg': 'audio/ogg',
+          'oga': 'audio/oga',
+        };
+        return mimeMap[ext || ''] || 'audio/webm'; // Default to webm
       };
-      return mimeMap[ext || ''] || 'audio/webm'; // Default to webm
-    };
 
-    // Use stored mime type if available (temporarily stored in language field)
-    // Otherwise detect from file extension
-    const mimeType = capture.language && capture.language.startsWith('audio/')
-      ? capture.language
-      : getMimeType(capture.audio_path);
-    
-    console.log('[process] File info before transcription:', {
-      requestId,
-      path: capture.audio_path,
-      detectedMime: getMimeType(capture.audio_path),
-      storedMime: capture.language,
-      usedMime: mimeType,
-      fileSize: audioBuffer.length,
-      extension: capture.audio_path.split('.').pop(),
-    });
+      // Use stored mime type if available (temporarily stored in language field)
+      // Otherwise detect from file extension
+      const mimeType = capture.language && capture.language.startsWith('audio/')
+        ? capture.language
+        : getMimeType(capture.audio_path);
+      
+      console.log('[process] File info before transcription:', {
+        requestId,
+        path: capture.audio_path,
+        detectedMime: getMimeType(capture.audio_path),
+        storedMime: capture.language,
+        usedMime: mimeType,
+        fileSize: audioBuffer.length,
+        extension: capture.audio_path.split('.').pop(),
+      });
 
-    // 4. Transcribe with Whisper
-    const { text, segments } = await transcribeAudio({
-      audioBuffer,
-      mime: mimeType,
-    });
+      // 4. Transcribe with Whisper
+      const transcriptionResult = await transcribeAudio({
+        audioBuffer,
+        mime: mimeType,
+      });
 
-    console.log('[process] Transcription complete:', {
-      requestId,
-      textLength: text.length,
-      segmentCount: segments.length,
-    });
+      text = transcriptionResult.text;
+      segments = transcriptionResult.segments;
 
-    // 5. Persist transcript
-    const { error: transcriptError } = await supabase.from('transcripts').insert({
-      capture_id: captureId,
-      text,
-      segments_json: segments,
-    });
+      console.log('[process] Transcription complete:', {
+        requestId,
+        textLength: text.length,
+        segmentCount: segments.length,
+      });
 
-    if (transcriptError) {
-      console.error('[process] Failed to save transcript:', transcriptError);
-      throw new InternalServerError('Failed to save transcript');
+      // 5. Persist transcript
+      const { error: transcriptError } = await supabase.from('transcripts').insert({
+        capture_id: captureId,
+        text,
+        segments_json: segments,
+      });
+
+      if (transcriptError) {
+        console.error('[process] Failed to save transcript:', transcriptError);
+        throw new InternalServerError('Failed to save transcript');
+      }
+    } else if (isText && capture.text_path) {
+      // Text processing path
+      // 2. Download text from Supabase Storage
+      const { data: textData, error: downloadError } = await supabase.storage
+        .from('notes')
+        .download(capture.text_path);
+
+      if (downloadError || !textData) {
+        console.error('[process] Download failed:', downloadError);
+        throw new InternalServerError('Failed to download text file');
+      }
+
+      text = await textData.text();
+      console.log('[process] Text downloaded:', {
+        requestId,
+        textLength: text.length,
+      });
+
+      // For text notes, we don't create a transcript record
+      // The text is processed directly
+    } else {
+      throw new InternalServerError('Capture must have either audio_path or text_path');
     }
 
     // 6. Structure outline with GPT
@@ -161,19 +199,40 @@ export async function processCapture({
       error,
     });
 
-    // If processing fails, try to create a minimal note with raw transcript
+    // If processing fails, try to create a minimal note with raw transcript or text
     try {
       const supabase = await createSupabaseServerClient();
       
-      // Try to get the transcript if it was saved
+      // Try to get the transcript if it was saved (for audio)
       const { data: transcript } = await supabase
         .from('transcripts')
         .select('text')
         .eq('capture_id', captureId)
         .single();
 
+      let fallbackText = '';
       if (transcript) {
-        // Create minimal note with raw transcript
+        fallbackText = transcript.text;
+      } else {
+        // Try to get text from the capture if it's a text note
+        const { data: capture } = await supabase
+          .from('captures')
+          .select('text_path')
+          .eq('id', captureId)
+          .single();
+
+        if (capture?.text_path) {
+          const { data: textData } = await supabase.storage
+            .from('notes')
+            .download(capture.text_path);
+          if (textData) {
+            fallbackText = await textData.text();
+          }
+        }
+      }
+
+      if (fallbackText) {
+        // Create minimal note with raw text
         const minimalEditorJson = {
           type: 'doc',
           content: [
@@ -184,7 +243,7 @@ export async function processCapture({
             },
             {
               type: 'paragraph',
-              content: [{ type: 'text', text: transcript.text }],
+              content: [{ type: 'text', text: fallbackText }],
             },
           ],
         };

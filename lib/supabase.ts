@@ -13,7 +13,8 @@ export type Database = {
         Row: {
           id: string;
           user_id: string;
-          audio_path: string;
+          audio_path: string | null;
+          text_path: string | null;
           duration_s: number | null;
           language: string | null;
           created_at: string;
@@ -21,7 +22,8 @@ export type Database = {
         Insert: {
           id?: string;
           user_id: string;
-          audio_path: string;
+          audio_path?: string | null;
+          text_path?: string | null;
           duration_s?: number | null;
           language?: string | null;
           created_at?: string;
@@ -29,7 +31,8 @@ export type Database = {
         Update: {
           id?: string;
           user_id?: string;
-          audio_path?: string;
+          audio_path?: string | null;
+          text_path?: string | null;
           duration_s?: number | null;
           language?: string | null;
           created_at?: string;
