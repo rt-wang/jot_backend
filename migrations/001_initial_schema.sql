@@ -1,4 +1,4 @@
--- Memory Lens Initial Schema
+-- jot Initial Schema
 -- Run this in Supabase SQL Editor
 
 -- Captures table: stores audio upload metadata

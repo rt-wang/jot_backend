@@ -280,5 +280,5 @@ Total time: ~15s for a 90s audio clip.
 
 ---
 
-**Built with ❤️ for Memory Lens**
+**Built with ❤️ for jot**
 

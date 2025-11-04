@@ -6,7 +6,7 @@ export default function HomePage() {
       maxWidth: '600px',
       margin: '0 auto'
     }}>
-      <h1>Memory Lens API</h1>
+      <h1>jot API</h1>
       <p>Backend server is running.</p>
       <ul>
         <li>

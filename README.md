@@ -2,7 +2,7 @@
 
 Audio → Transcript → Organized Editable Note App
 
-This is the backend API server for Memory Lens, built with Next.js 15 App Router, Supabase, and OpenAI.
+This is the backend API server for jot, built with Next.js 15 App Router, Supabase, and OpenAI.
 
 ## Tech Stack
 

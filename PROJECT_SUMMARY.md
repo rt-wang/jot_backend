@@ -2,7 +2,7 @@
 
 ## ✅ Project Complete
 
-The **Memory Lens** backend has been fully implemented as a production-ready Next.js 15 API server.
+The **jot** backend has been fully implemented as a production-ready Next.js 15 API server.
 
 ---
 

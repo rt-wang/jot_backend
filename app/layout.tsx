@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Memory Lens API',
+  title: 'jot API',
   description: 'Audio → Transcript → Organized Editable Note App',
 };
 
