@@ -1,6 +1,6 @@
 /**
- * GET /api/note/:id - Fetch a note
- * PATCH /api/note/:id - Update a note
+ * GET /api/notes/:id - Fetch a note
+ * PATCH /api/notes/:id - Update a note
  */
 
 import { requireUser } from '@/lib/auth';
@@ -117,7 +117,7 @@ export async function PATCH(
       .eq('user_id', userId);
 
     if (error) {
-      console.error('[note] Update failed:', error);
+      console.error('[notes] Update failed:', error);
       throw new Error('Failed to update note');
     }
 

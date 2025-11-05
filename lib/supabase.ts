@@ -9,60 +9,14 @@ import { cookies, headers } from 'next/headers';
 export type Database = {
   public: {
     Tables: {
-      captures: {
-        Row: {
-          id: string;
-          user_id: string;
-          audio_path: string | null;
-          text_path: string | null;
-          duration_s: number | null;
-          language: string | null;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          user_id: string;
-          audio_path?: string | null;
-          text_path?: string | null;
-          duration_s?: number | null;
-          language?: string | null;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          user_id?: string;
-          audio_path?: string | null;
-          text_path?: string | null;
-          duration_s?: number | null;
-          language?: string | null;
-          created_at?: string;
-        };
-      };
-      transcripts: {
-        Row: {
-          capture_id: string;
-          text: string;
-          segments_json: any;
-        };
-        Insert: {
-          capture_id: string;
-          text: string;
-          segments_json?: any;
-        };
-        Update: {
-          capture_id?: string;
-          text?: string;
-          segments_json?: any;
-        };
-      };
       notes: {
         Row: {
           id: string;
           user_id: string;
-          capture_id: string;
           title: string;
-          outline_json: any;
+          content_text: string | null;
           editor_json: any;
+          outline_json: any | null;
           tags: string[];
           created_at: string;
           updated_at: string;
@@ -70,10 +24,10 @@ export type Database = {
         Insert: {
           id?: string;
           user_id: string;
-          capture_id: string;
           title: string;
-          outline_json: any;
+          content_text?: string | null;
           editor_json: any;
+          outline_json?: any | null;
           tags?: string[];
           created_at?: string;
           updated_at?: string;
@@ -81,13 +35,82 @@ export type Database = {
         Update: {
           id?: string;
           user_id?: string;
-          capture_id?: string;
           title?: string;
-          outline_json?: any;
+          content_text?: string | null;
           editor_json?: any;
+          outline_json?: any | null;
           tags?: string[];
           created_at?: string;
           updated_at?: string;
+        };
+      };
+      audio_files: {
+        Row: {
+          id: string;
+          note_id: string;
+          storage_path: string;
+          duration_s: number | null;
+          mime_type: string | null;
+          created_at: string;
+          order_index: number;
+        };
+        Insert: {
+          id?: string;
+          note_id: string;
+          storage_path: string;
+          duration_s?: number | null;
+          mime_type?: string | null;
+          created_at?: string;
+          order_index?: number;
+        };
+        Update: {
+          id?: string;
+          note_id?: string;
+          storage_path?: string;
+          duration_s?: number | null;
+          mime_type?: string | null;
+          created_at?: string;
+          order_index?: number;
+        };
+      };
+      transcripts: {
+        Row: {
+          audio_file_id: string;
+          text: string;
+          segments_json: any;
+        };
+        Insert: {
+          audio_file_id: string;
+          text: string;
+          segments_json?: any;
+        };
+        Update: {
+          audio_file_id?: string;
+          text?: string;
+          segments_json?: any;
+        };
+      };
+      text_inputs: {
+        Row: {
+          id: string;
+          note_id: string;
+          storage_path: string;
+          mime_type: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          note_id: string;
+          storage_path: string;
+          mime_type?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          note_id?: string;
+          storage_path?: string;
+          mime_type?: string | null;
+          created_at?: string;
         };
       };
     };

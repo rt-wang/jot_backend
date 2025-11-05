@@ -14,27 +14,53 @@ export const textMimeSchema = z.enum(['text/plain', 'text/markdown']);
 // Combined MIME types for presign
 export const presignMimeSchema = z.union([audioMimeSchema, textMimeSchema]);
 
-// POST /api/capture/presign
-export const presignBodySchema = z.object({
+// POST /api/notes - Create note
+export const createNoteBodySchema = z.object({
+  title: z.string().min(1).max(255),
+  content_text: z.string().optional(),
+  tags: z.array(z.string()).max(10).optional(),
+});
+
+export type CreateNoteBody = z.infer<typeof createNoteBodySchema>;
+
+// POST /api/notes/:id/audio - Request presigned URL for audio
+export const addAudioBodySchema = z.object({
   filename: z.string().min(1).max(255),
-  mime: presignMimeSchema,
+  mime: audioMimeSchema,
   duration_s: z.number().int().min(0).optional(),
 });
 
-export type PresignBody = z.infer<typeof presignBodySchema>;
+export type AddAudioBody = z.infer<typeof addAudioBodySchema>;
 
-// POST /api/capture/commit
-export const commitBodySchema = z.object({
+// POST /api/notes/:id/audio/commit - Commit audio upload
+export const commitAudioBodySchema = z.object({
   storageKey: z.string().min(1),
   duration_s: z.number().int().min(0).optional(),
-  mime: presignMimeSchema.optional(), // MIME type from presign request
+  mime: audioMimeSchema, // MIME type must match the uploaded file
 });
 
-export type CommitBody = z.infer<typeof commitBodySchema>;
+export type CommitAudioBody = z.infer<typeof commitAudioBodySchema>;
 
-// PATCH /api/note/:id
+// POST /api/notes/:id/text - Request presigned URL for text
+export const addTextBodySchema = z.object({
+  filename: z.string().min(1).max(255),
+  mime: textMimeSchema,
+});
+
+export type AddTextBody = z.infer<typeof addTextBodySchema>;
+
+// POST /api/notes/:id/text/commit - Commit text upload
+export const commitTextBodySchema = z.object({
+  storageKey: z.string().min(1),
+  mime: textMimeSchema.optional(),
+});
+
+export type CommitTextBody = z.infer<typeof commitTextBodySchema>;
+
+// PATCH /api/notes/:id - Update note
 export const patchNoteBodySchema = z.object({
   title: z.string().min(1).max(255).optional(),
+  content_text: z.string().optional(),
   editor_json: z.any().optional(), // Loose validation for ProseMirror JSON
   tags: z.array(z.string()).max(10).optional(),
 });
