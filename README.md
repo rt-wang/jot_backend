@@ -1,15 +1,15 @@
 # jot - Backend
 
-Audio → Transcript → Organized Editable Note App
+Audio & Text → Transcript → Organized Editable Note App
 
-This is the backend API server for jot, built with Next.js 15 App Router, Supabase, and OpenAI.
+This is the backend API server for jot, built with Next.js 15 App Router, Supabase, and OpenAI. Notes are the primary entity - users can create notes and add multiple audio files or text inputs to them.
 
 ## Tech Stack
 
 - **Framework**: Next.js 15 (App Router, TypeScript, ESM)
 - **Auth**: Supabase Auth (JWT with RLS)
 - **Database**: Supabase Postgres
-- **Storage**: Supabase Storage (audio files)
+- **Storage**: Supabase Storage (audio and text files)
 - **AI/ML**: OpenAI Whisper (transcription) + GPT-4o-mini (structuring)
 - **Rate Limiting**: Upstash Redis
 - **Validation**: Zod
@@ -54,30 +54,37 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 ### 4. Setup Database
 
-Run the migration script in your Supabase SQL Editor:
+Run the migration scripts in your Supabase SQL Editor:
 
 ```bash
+# 1. Run initial schema (if starting fresh)
 # Copy the contents of migrations/001_initial_schema.sql
+# and run it in Supabase SQL Editor
+
+# 2. Run note-centric schema refactor
+# Copy the contents of migrations/002_restructure_notes.sql
 # and run it in Supabase SQL Editor
 ```
 
 This creates:
-- `captures` table (audio metadata)
-- `transcripts` table (Whisper transcriptions)
-- `notes` table (structured notes)
+- `notes` table (primary entity, editable notes)
+- `audio_files` table (multiple audio files per note)
+- `transcripts` table (one per audio file)
+- `text_inputs` table (multiple text files per note)
 - Row Level Security policies
-- Storage bucket for audio files
+- Storage buckets for audio and text files
+
+**Note:** See `MIGRATION_GUIDE.md` for detailed migration instructions if you have existing data.
 
 ### 5. Configure Supabase Storage
 
 In Supabase Dashboard:
 
 1. Go to **Storage** → **Buckets**
-2. Create a new bucket named `audio`
-3. Set it as **Private**
-4. Add storage policies:
-   - Allow authenticated users to upload (`INSERT`)
-   - Allow users to read their own files (`SELECT`)
+2. Create two buckets:
+   - `audio` - For audio files (Private, 50MB limit)
+   - `notes` - For text files (Private, 10MB limit)
+3. Storage policies are automatically created by the migration script
 
 ### 6. Run Development Server
 
@@ -121,16 +128,42 @@ Health check endpoint (no auth required)
 
 All endpoints below require authentication via Supabase Auth JWT.
 
-#### `POST /api/capture/presign`
+#### `POST /api/notes`
 
-Get signed upload URL for audio file.
+Create a new note.
 
 **Request:**
 ```json
 {
-  "filename": "memo.webm",
+  "title": "My Note",
+  "content_text": "Initial content",
+  "tags": ["work"]
+}
+```
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "title": "My Note",
+  "content_text": "Initial content",
+  "editor_json": {...},
+  "tags": ["work"],
+  "created_at": "2023-01-01T00:00:00Z",
+  "updated_at": "2023-01-01T00:00:00Z"
+}
+```
+
+#### `POST /api/notes/:id/audio`
+
+Get presigned upload URL for audio file.
+
+**Request:**
+```json
+{
+  "filename": "recording.webm",
   "mime": "audio/webm",
-  "duration_s": 75
+  "duration_s": 60
 }
 ```
 
@@ -138,74 +171,135 @@ Get signed upload URL for audio file.
 ```json
 {
   "uploadUrl": "https://...",
-  "storageKey": "audio/8b...-memo.webm"
+  "storageKey": "abc123-recording.webm"
 }
 ```
 
 **Rate Limit:** 30/min per user
 
-#### `POST /api/capture/commit`
+#### `POST /api/notes/:id/audio/commit`
 
-Commit uploaded audio and start processing.
+Commit uploaded audio and start transcription.
 
 **Request:**
 ```json
 {
-  "storageKey": "audio/8b...-memo.webm",
-  "duration_s": 75
+  "storageKey": "abc123-recording.webm",
+  "duration_s": 60,
+  "mime": "audio/webm"
 }
 ```
 
 **Response (≤120s):**
 ```json
 {
-  "captureId": "uuid",
-  "noteId": "uuid"
+  "audioFileId": "uuid",
+  "noteId": "uuid",
+  "transcribed": true
 }
 ```
 
 **Response (>120s):**
 ```json
 {
-  "captureId": "uuid",
+  "audioFileId": "uuid",
+  "noteId": "uuid",
   "processing": "queued"
 }
 ```
 
 **Rate Limit:** 15/min per user
 
-#### `GET /api/note/:id`
+#### `POST /api/notes/:id/text`
 
-Fetch a note by ID.
+Get presigned upload URL for text file.
+
+**Request:**
+```json
+{
+  "filename": "notes.txt",
+  "mime": "text/plain"
+}
+```
+
+**Response:**
+```json
+{
+  "uploadUrl": "https://...",
+  "storageKey": "xyz789-notes.txt"
+}
+```
+
+**Rate Limit:** 30/min per user
+
+#### `POST /api/notes/:id/text/commit`
+
+Commit uploaded text and process.
+
+**Request:**
+```json
+{
+  "storageKey": "xyz789-notes.txt",
+  "mime": "text/plain"
+}
+```
+
+**Response:**
+```json
+{
+  "textInputId": "uuid",
+  "noteId": "uuid"
+}
+```
+
+**Rate Limit:** 15/min per user
+
+#### `GET /api/notes/:id`
+
+Fetch a note by ID with all associated audio files and text inputs.
 
 **Response:**
 ```json
 {
   "id": "uuid",
-  "title": "Next steps for vlog",
+  "title": "My Note",
+  "content_text": "Combined content from audio and text inputs",
   "editor_json": {...},
-  "outline_json": {
-    "title": "...",
-    "highlights": [...],
-    "insights": [...],
-    "open_questions": [...],
-    "next_steps": [...]
-  },
-  "tags": ["creative"],
+  "outline_json": {...},
+  "tags": ["work"],
+  "audio_files": [
+    {
+      "id": "uuid",
+      "storage_path": "abc123-recording.webm",
+      "duration_s": 60,
+      "mime_type": "audio/webm",
+      "transcript": {
+        "text": "Full transcript...",
+        "segments_json": [...]
+      }
+    }
+  ],
+  "text_inputs": [
+    {
+      "id": "uuid",
+      "storage_path": "xyz789-notes.txt",
+      "mime_type": "text/plain"
+    }
+  ],
   "created_at": "2023-01-01T00:00:00Z",
-  "updated_at": "2023-01-01T00:00:00Z",
-  "capture_id": "uuid"
+  "updated_at": "2023-01-01T00:00:00Z"
 }
 ```
 
-#### `PATCH /api/note/:id`
+#### `PATCH /api/notes/:id`
 
 Update a note.
 
 **Request:**
 ```json
 {
-  "title": "Refined title",
+  "title": "Updated title",
+  "content_text": "Updated content",
   "tags": ["work", "study"],
   "editor_json": {...}
 }
@@ -266,14 +360,33 @@ Search notes by text or tags.
 
 ## Architecture
 
+### Note-Centric Model
+
+Notes are the primary entity. Users create notes first, then add audio and/or text inputs:
+- **Notes**: Primary workspace, always editable
+- **Audio Files**: Multiple audio files can be attached to one note
+- **Text Inputs**: Multiple text files can be attached to one note
+- **Transcripts**: Automatically generated for audio files
+
 ### Processing Pipeline
 
-1. **Upload**: Client gets signed URL, uploads audio to Supabase Storage
-2. **Commit**: Client commits the upload, backend creates capture record
-3. **Transcribe**: OpenAI Whisper transcribes audio → text + segments
-4. **Structure**: GPT-4o-mini converts transcript → structured outline
-5. **Generate**: GPT-4o-mini converts outline → ProseMirror JSON
-6. **Store**: Save note to database with RLS enforced
+#### Audio Processing:
+1. **Create Note**: User creates a note (can be empty or with initial content)
+2. **Upload Audio**: Client gets presigned URL, uploads audio to Supabase Storage
+3. **Commit Audio**: Client commits upload, backend creates audio_file record
+4. **Transcribe**: OpenAI Whisper transcribes audio → text + segments
+5. **Update Note**: Transcript is added to note's content_text
+6. **Structure**: GPT-4o-mini converts combined content → structured outline
+7. **Generate**: GPT-4o-mini converts outline → ProseMirror JSON
+8. **Store**: Update note with structured content
+
+#### Text Processing:
+1. **Create Note**: User creates a note (can be empty or with initial content)
+2. **Upload Text**: Client gets presigned URL, uploads text to Supabase Storage
+3. **Commit Text**: Client commits upload, backend creates text_input record
+4. **Update Note**: Text is added to note's content_text (no GPT structuring)
+5. **Generate**: Simple paragraph-based editor JSON from text
+6. **Store**: Update note with text content
 
 ### Error Handling
 
@@ -313,12 +426,18 @@ Status codes:
 ├── app/
 │   └── api/
 │       ├── health/route.ts
-│       ├── capture/
-│       │   ├── presign/route.ts
-│       │   └── commit/route.ts
-│       ├── note/
+│       ├── notes/
+│       │   ├── route.ts                      # POST /api/notes (create note)
 │       │   └── [id]/
-│       │       ├── route.ts (GET, PATCH)
+│       │       ├── route.ts                 # GET, PATCH /api/notes/:id
+│       │       ├── audio/
+│       │       │   ├── route.ts              # POST /api/notes/:id/audio (presign)
+│       │       │   └── commit/route.ts       # POST /api/notes/:id/audio/commit
+│       │       └── text/
+│       │           ├── route.ts              # POST /api/notes/:id/text (presign)
+│       │           └── commit/route.ts       # POST /api/notes/:id/text/commit
+│       ├── note/                             # Legacy endpoints (for compatibility)
+│       │   └── [id]/
 │       │       └── regenerate/route.ts
 │       └── search/route.ts
 ├── lib/
@@ -330,9 +449,10 @@ Status codes:
 │   ├── supabase.ts          # Supabase clients
 │   ├── validation.ts        # Zod schemas
 │   └── server/
-│       └── process.ts       # Processing pipeline
+│       └── process.ts       # Processing pipeline (audio & text)
 ├── migrations/
-│   └── 001_initial_schema.sql
+│   ├── 001_initial_schema.sql      # Initial schema (legacy)
+│   └── 002_restructure_notes.sql   # Note-centric schema
 ├── tests/
 │   └── api/
 │       ├── health.test.ts
@@ -343,7 +463,10 @@ Status codes:
 ├── package.json
 ├── tsconfig.json
 ├── vitest.config.ts
-└── README.md
+├── README.md
+├── MIGRATION_GUIDE.md        # Database migration guide
+├── API_TESTING_NEW.md        # API testing examples
+└── IMPLEMENTATION_SUMMARY.md # Architecture overview
 ```
 
 ### Adding New Endpoints
@@ -358,11 +481,10 @@ Status codes:
 ### Database Migrations
 
 Add new migrations in `migrations/` with sequential numbering:
-- `001_initial_schema.sql`
-- `002_add_feature.sql`
-- etc.
+- `001_initial_schema.sql` - Initial capture-centric schema (legacy)
+- `002_restructure_notes.sql` - Note-centric schema refactor
 
-Run migrations in Supabase SQL Editor.
+Run migrations in Supabase SQL Editor. See `MIGRATION_GUIDE.md` for detailed instructions on migrating from the old schema to the new note-centric model.
 
 ## Production Deployment
 
