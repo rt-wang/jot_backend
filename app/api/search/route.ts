@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     // Build query
     let dbQuery = supabase
       .from('notes')
-      .select('id, title, tags, created_at, capture_id')
+      .select('id, title, tags, created_at, updated_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
       title: string;
       tags: string[];
       created_at: string;
-      capture_id: string;
+      updated_at: string;
     };
 
     let results: NoteResult[] = notes || [];
@@ -66,14 +66,15 @@ export async function GET(request: Request) {
       // You'd need to join with transcripts table and use ts_vector
     }
 
-    return Response.json({
-      items: results.map((note: NoteResult) => ({
+    return Response.json(
+      results.map((note: NoteResult) => ({
         id: note.id,
         title: note.title,
         tags: note.tags,
         created_at: note.created_at,
-      })),
-    });
+        updated_at: note.updated_at,
+      }))
+    );
   } catch (error) {
     return errorToResponse(error);
   }
